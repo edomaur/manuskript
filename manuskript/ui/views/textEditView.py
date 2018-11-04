@@ -2,7 +2,8 @@
 # --!-- coding: utf8 --!--
 import re
 
-from PyQt5.QtCore import QTimer, QModelIndex, Qt, QEvent, pyqtSignal, QRegExp, QLocale
+from PyQt5.Qt import QApplication
+from PyQt5.QtCore import QTimer, QModelIndex, Qt, QEvent, pyqtSignal, QRegExp, QLocale, QPersistentModelIndex
 from PyQt5.QtGui import QTextBlockFormat, QTextCharFormat, QFont, QColor, QIcon, QMouseEvent, QTextCursor
 from PyQt5.QtWidgets import QWidget, QTextEdit, qApp, QAction, QMenu
 
@@ -35,10 +36,6 @@ class textEditView(QTextEdit):
         self.setAcceptRichText(False)
         # When setting up a theme, this becomes true.
         self._fromTheme = False
-        # Sometimes we need to update index because item has changed its
-        # position, so we only have it's ID as reference. We store it to
-        # update at the propper time.
-        self._updateIndexFromID = None
         self._themeData = None
         self._highlighterClass = BasicHighlighter
 
@@ -106,10 +103,6 @@ class textEditView(QTextEdit):
             self._model.dataChanged.connect(self.update, F.AUC)
         except TypeError:
             pass
-        try:
-            self._model.rowsAboutToBeRemoved.connect(self.rowsAboutToBeRemoved, F.AUC)
-        except TypeError:
-            pass
 
     def setColumn(self, col):
         self._column = col
@@ -128,7 +121,7 @@ class textEditView(QTextEdit):
             self.setEnabled(True)
             if index.column() != self._column:
                 index = index.sibling(index.row(), self._column)
-            self._index = index
+            self._index = QPersistentModelIndex(index)
 
             self.setPlaceholderText(self._placeholderText)
 
@@ -147,7 +140,7 @@ class textEditView(QTextEdit):
 
     def currentIndex(self):
         """
-        Getter function used to normalized views acces with QAbstractItemViews.
+        Getter function used to normalized views access with QAbstractItemViews.
         """
         if self._index:
             return self._index
@@ -156,7 +149,7 @@ class textEditView(QTextEdit):
 
     def getSelection(self):
         """
-        Getter function used to normalized views acces with QAbstractItemViews.
+        Getter function used to normalized views access with QAbstractItemViews.
         """
         return [self.currentIndex()]
 
@@ -169,7 +162,7 @@ class textEditView(QTextEdit):
                 self.setEnabled(True)
                 if i.column() != self._column:
                     i = i.sibling(i.row(), self._column)
-                self._indexes.append(i)
+                self._indexes.append(QModelIndex(i))
 
                 if not self._model:
                     self.setModel(i.model())
@@ -227,7 +220,7 @@ class textEditView(QTextEdit):
                 QWidget#{name}{{
                     background: {bg};
                 }}""".format(
-                    # We style by name, otherwise all heriting widgets get the same
+                    # We style by name, otherwise all inheriting widgets get the same
                     # colored background, for example context menu.
                     name=self.parent().objectName(),
                     bg=background,
@@ -262,13 +255,6 @@ class textEditView(QTextEdit):
         if self._updating:
             return
 
-        if self._updateIndexFromID:
-            # We have to update to a new index
-            self._index = self._index.model().getIndexByID(
-                self._updateIndexFromID,
-                self._column)
-            self._updateIndexFromID = None
-
         if self._index and self._index.isValid():
 
             if topLeft.parent() != self._index.parent():
@@ -292,39 +278,6 @@ class textEditView(QTextEdit):
             if update:
                 self.updateText()
 
-    def rowsAboutToBeRemoved(self, parent, first, last):
-        if self._index and self._index.isValid():
-
-            # Has my _index just been removed?
-            if self._index.parent() == parent and \
-                                    first <= self._index.row() <= last:
-                self._index = None
-                self.setEnabled(False)
-                return
-                # FIXME: self._indexes
-
-            if self._index.model() != outlineItem:
-                # The next stuff is only for outlineItems
-                return
-
-            # We check if item is a child of the row about to be removed
-            child = False
-            p = self._index.parent()
-            while p:
-                if p == parent:
-                    child = True
-                    p = None
-                elif p.isValid():
-                    p = p.parent()
-                else:
-                    p = None
-            if child:
-                # Item might have moved (so will not be valid any more)
-                ID = self._index.internalPointer().ID()
-                # We store ID, and we update it in self.update (after the
-                # rows have been removed).
-                self._updateIndexFromID = ID
-
     def disconnectDocument(self):
         try:
             self.document().contentsChanged.disconnect(self.updateTimer.start)
@@ -341,9 +294,9 @@ class textEditView(QTextEdit):
         self._updating = True
         if self._index:
             self.disconnectDocument()
-            if self.toPlainText() != F.toString(self._model.data(self._index)):
+            if self.toPlainText() != F.toString(self._index.data()):
                 # print("    Updating plaintext")
-                self.document().setPlainText(F.toString(self._model.data(self._index)))
+                self.document().setPlainText(F.toString(self._index.data()))
             self.reconnectDocument()
 
         elif self._indexes:
@@ -378,10 +331,11 @@ class textEditView(QTextEdit):
         # print("Submitting", self.objectName())
         if self._index and self._index.isValid():
             # item = self._index.internalPointer()
-            if self.toPlainText() != self._model.data(self._index):
+            if self.toPlainText() != self._index.data():
                 # print("    Submitting plain text")
                 self._updating = True
-                self._model.setData(self._index, self.toPlainText())
+                self._model.setData(QModelIndex(self._index),
+                                    self.toPlainText())
                 self._updating = False
 
         elif self._indexes:
@@ -394,7 +348,12 @@ class textEditView(QTextEdit):
             self._updating = False
 
     def keyPressEvent(self, event):
-        QTextEdit.keyPressEvent(self, event)
+        if event.key() == Qt.Key_V and event.modifiers() & Qt.ControlModifier:
+            text = QApplication.clipboard().text()
+            self.insertPlainText(text)
+        else:
+            QTextEdit.keyPressEvent(self, event)
+
         if event.key() == Qt.Key_Space:
             self.submit()
 
@@ -427,14 +386,15 @@ class textEditView(QTextEdit):
 
     def setDict(self, d):
         self.currentDict = d
-        self._dict = enchant.Dict(d)
+        if d and enchant.dict_exists(d):
+            self._dict = enchant.Dict(d)
         if self.highlighter:
             self.highlighter.rehighlight()
 
     def toggleSpellcheck(self, v):
         self.spellcheck = v
         if enchant and self.spellcheck and not self._dict:
-            if self.currentDict:
+            if self.currentDict and enchant.dict_exists(self.currentDict):
                 self._dict = enchant.Dict(self.currentDict)
             elif enchant.get_default_language() and enchant.dict_exists(enchant.get_default_language()):
                 self._dict = enchant.Dict(enchant.get_default_language())
@@ -480,7 +440,7 @@ class textEditView(QTextEdit):
         QTextEdit.wheelEvent(self, event)
 
     class SpellAction(QAction):
-        """A special QAction that returns the text in a signal. Used for spellckech."""
+        """A special QAction that returns the text in a signal. Used for spellcheck."""
 
         correct = pyqtSignal(str)
 
@@ -584,7 +544,7 @@ class textEditView(QTextEdit):
 
     def callMainTreeView(self, functionName):
         """
-        The tree view in mainwindow must have same index as the text
+        The tree view in main window must have same index as the text
         edit that has focus. So we can pass it the call for documents
         edits like: duplicate, move up, etc.
         """

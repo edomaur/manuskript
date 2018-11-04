@@ -27,8 +27,8 @@ class mainEditor(QWidget, Ui_mainEditor):
 
     It contains two main elements:
 
-     1. A `tabSplitter`, which can open any numer of `outlineItem`s either in tabs
-        (in `QTabWidget`) and/or in splitted views (children `tabSplitter`s).
+     1. A `tabSplitter`, which can open any number of `outlineItem`s either in tabs
+        (in `QTabWidget`) and/or in split views (children `tabSplitter`s).
      2. An horizontal layout contain a number of buttons and information:
 
         - Go up button
@@ -37,7 +37,7 @@ class mainEditor(QWidget, Ui_mainEditor):
         - Label showing stats about displayed `outlineItem`
         - Fullscreen button
 
-    `mainEditor` is responsible for opening indexes, propagating event to relevent
+    `mainEditor` is responsible for opening indexes, propagating event to relevant
     views, opening and closing tabs, etc.
 
     +---------------------------| mainEditor |--------------------------------+
@@ -197,8 +197,9 @@ class mainEditor(QWidget, Ui_mainEditor):
             self.setCurrentModelIndex(i, newTab)
 
     def goToParentItem(self):
-        idx = self.currentEditor().currentIndex
-        self.mw.treeRedacOutline.setCurrentIndex(idx.parent())
+        if self.currentEditor():
+            idx = self.currentEditor().currentIndex
+            self.mw.treeRedacOutline.setCurrentIndex(idx.parent())
 
     def setCurrentModelIndex(self, index, newTab=False, tabWidget=None):
 
@@ -207,7 +208,7 @@ class mainEditor(QWidget, Ui_mainEditor):
         if tabWidget is None:
             tabWidget = self.currentTabWidget()
 
-        # Checking if tab is already openned
+        # Checking if tab is already opened
         for w in self.allTabs(tabWidget):
             if w.currentIndex == index:
                 tabWidget.setCurrentWidget(w)
